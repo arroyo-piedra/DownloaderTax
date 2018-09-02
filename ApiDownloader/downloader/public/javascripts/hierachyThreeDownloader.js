@@ -4,18 +4,20 @@ var especies2000urlRaw = "http://www.catalogueoflife.org/annual-checklist/";
 var queryFlags = "format=json&response=full&"
 //TODO
 //reapara xml antes del 2015
-var MAX_JOBS = 1000;
+var MAX_JOBS = 3000;
 
 class TaxonomyTree {
 	
 	constructor() {
 		this.cache = {};
 		this.pendingJobs = 0;
+		this.completeJobs = 0;
 		this.readyCallback = undefined;
 		this.notify = undefined;
 		this.pendingNames = [];
 		this.pendingApiCalls =[];
 		this.year = "";
+		
 		// deben tener el siguiente formato:
 		//{name:"name", start:start}
 		console.log("creating three");
@@ -92,7 +94,8 @@ class TaxonomyTree {
              myself.handleResult(xhttpName);
          };
          if(this.notify !== undefined){
-			this.notify(TaxonName + " " + this.pendingJobs+ " more...");
+			this.notify(TaxonName + " & " + this.pendingJobs+ " more...  Completed:" + this.completeJobs);
+			//console.log(TaxonName + " " + this.pendingJobs+ " more...  Completed:" + this.completeJobs);
         }
 		xhttpName.send();
 	}
@@ -117,6 +120,7 @@ class TaxonomyTree {
 		if (xhr.readyState == 4 && xhr.status == 200) {
 			//register api call back complete
 			this.pendingJobs--;
+			this.completeJobs++;
 			
 			let responseText = xhr.responseText;
 			let parsedResult;
@@ -132,7 +136,7 @@ class TaxonomyTree {
 				let pendingApiCall = {};
 						pendingApiCall["name"] = parsedResult.name;
 						pendingApiCall["start"] = parsedResult.start+parsedResult.number_of_results_returned;
-						this.pendingApiCalls.push(pendingApiCall);
+						this.pendingApiCalls.unshift(pendingApiCall);
 				//this.apiCallByName(parsedResult.name,parsedResult.start+parsedResult.number_of_results_returned);
 			}
 			
@@ -152,7 +156,7 @@ class TaxonomyTree {
 						let pendingApiCall = {};
 						pendingApiCall["name"] = actualChildTaxon.name;
 						pendingApiCall["start"] = 0;
-						this.pendingApiCalls.push(pendingApiCall);
+						this.pendingApiCalls.unshift(pendingApiCall);
 						//console.log(actualChildTaxon);
 					}
 				}
@@ -195,6 +199,7 @@ class TaxonomyTree {
 		return results;
 	}
 	
+	//catalogue of life format
 	extractData(originalJson){
 		let newTaxon = {};
 		
@@ -209,10 +214,18 @@ class TaxonomyTree {
 		}		
 		newTaxon.name = originalJson.name;
 		newTaxon.author = originalJson.author;
-		newTaxon.record_scrutiny_date = originalJson.record_scrutiny_date;
-		newTaxon.Synonym = originalJson.synonyms
+		let scrutinyDate = originalJson.record_scrutiny_date;
+		if(scrutinyDate !== undefined){
+			newTaxon.record_scrutiny_date = scrutinyDate.scrutiny;
+		}else{
+			newTaxon.record_scrutiny_date = undefined;
+		}
+
+		newTaxon.Synonym = originalJson.synonyms;
 		newTaxon.children = newChildTaxons;
-		newTaxon.author = newTaxon.name_html;
+		newTaxon.author = originalJson.author;
+		newTaxon.rank = originalJson.rank;
+		//console.log(newTaxon);
 		
 		
 		return newTaxon;

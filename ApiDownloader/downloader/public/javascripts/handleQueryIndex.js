@@ -16,6 +16,7 @@ $(function () {
     {
         let name = $('#name').val();
         let year = $('#year').val();
+		name = name.trim();
         //alert('button clicked' + name + "---" + year);
         if(year.length > 3){
 			//cambiar por ano actual
@@ -28,7 +29,8 @@ $(function () {
 				tree.setOnReadyStatusCallback( function(){
 				
 					let treeResult = tree.createTreeQuery(name,0);
-					console.log(treeResult);
+					//console.log(treeResult);
+					//console.log(treeResult);
 					 //$("#resultadoName").html(JSON.stringify(treeResult));
 					 //alert("cargado");
 					let resultText = JSON.stringify(treeResult);
