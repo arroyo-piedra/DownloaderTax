@@ -4,7 +4,8 @@ var especies2000urlRaw = "http://www.catalogueoflife.org/annual-checklist/";
 var queryFlags = "format=json&response=full&"
 //TODO
 //reapara xml antes del 2015
-var MAX_JOBS = 3000;
+//reparar on error en http request
+var MAX_JOBS = 100;
 
 class TaxonomyTree {
 	
@@ -17,6 +18,7 @@ class TaxonomyTree {
 		this.pendingNames = [];
 		this.pendingApiCalls =[];
 		this.year = "";
+		this.working = false;
 		
 		// deben tener el siguiente formato:
 		//{name:"name", start:start}
@@ -41,6 +43,11 @@ class TaxonomyTree {
 			//console.log(nextCall.name);
 			actualTree.apiCallByName(nextCall.name, nextCall.start);
 		}
+		
+		//we finished downloading the three, is time to build
+		if(this.pendingJobs <= 0 && this.pendingApiCalls.length <= 0 ){
+			this.buildTree();
+		}
 	}
 
 	
@@ -59,9 +66,14 @@ class TaxonomyTree {
 		}
 		this.pendingNames = [];
 		//console.log(this.cache);
-		if(this.readyCallback !== undefined && typeof this.readyCallback === "function"){
+		if(this.readyCallback !== undefined && typeof this.readyCallback === "function" && this.working){
+			this.working = false;
 			this.readyCallback();
 		}
+		
+	}
+	
+	onApiCallError(){
 		
 	}
 	
@@ -76,7 +88,7 @@ class TaxonomyTree {
 	}
 	//solicita al api utilizando nombre
 	apiCallByName(TaxonName,start){
-
+		this.working = true;
 		//register and api call awaiting response
 		this.pendingJobs++;
 		
@@ -163,11 +175,11 @@ class TaxonomyTree {
 			}
 			//console.log("loaded result pending jobs: " + this.pendingJobs);
 			
-			//we finished downloading the three, is time to build
-			if(this.pendingJobs <= 0 && this.pendingApiCalls.length <= 0 ){
-				this.buildTree();
-			}
+			
 
+		}else if(xhr.readyState == 4 && xhr.status == 500){
+			this.pendingJobs--;
+			console.log("Error on api side, failed tp retrieve query :(")
 		}
 
 	}
