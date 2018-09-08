@@ -39,7 +39,7 @@ $(function () {
 				tree.setOnReadyStatusCallback( function(){
 				
 					let treeResult = tree.createTreeQuery(name,0);
-					console.log(treeResult);
+					//console.log(treeResult);
 					//console.log(treeResult);
 					 //$("#resultadoName").html(JSON.stringify(treeResult));
 					 //alert("cargado");
