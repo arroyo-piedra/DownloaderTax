@@ -1,12 +1,14 @@
-var format = "xml" // options are xml or json
-var especies2000url = "http://webservice.catalogueoflife.org/col/";
-var especies2000urlRaw = "http://www.catalogueoflife.org/annual-checklist/";
-var queryFlags = "webservice?format="+format+"&response=full&"
-//TODO
-//reapara xml antes del 2015
-//reparar on error en http request
-var MAX_JOBS = 100;
+var format = "json" // options are xml or json, probably should not be a global variable
+var especies2000url = "http://webservice.catalogueoflife.org/col"; //direction for current year
+var especies2000urlRaw = "http://www.catalogueoflife.org/annual-checklist/"; //direction that needs year specified
+var queryFlags = "/webservice?format="+format+"&response=full&" //flags to shape the query
 
+
+var MAX_JOBS = 100; // max ammount of api requests that can exist  at the same time
+
+
+//options for the xml to json conversion
+//any change would require to adapt de parser
 var xmlParserOptions = {
 	mergeCDATA: true,	// extract cdata and merge with text nodes
 	grokAttr: false,		// convert truthy attributes to boolean, etc
@@ -24,42 +26,45 @@ var xmlParserOptions = {
 	childrenAsArray: true 	// force children into arrays
 };	
 
-
+//a class containg the sistem to convert and download hierarchys from catalogueOfLife
 class TaxonomyTree {
 	
 	constructor() {
-		this.cache = {};
-		this.pendingJobs = 0;
-		this.completeJobs = 0;
-		this.readyCallback = undefined;
-		this.notify = undefined;
-		this.log = undefined;
-		this.pendingNames = [];
-		this.pendingApiCalls =[];
-		this.year = "";
-		this.working = false;
+		this.cache = {};//stores result from api call
+		this.pendingJobs = 0;//api calls awaiting for resolution
+		this.completeJobs = 0;//api calls completed
+		this.readyCallback = undefined;//function that is executes after the download finishes
+		this.notify = undefined;//function that is called to notify the state of the download process, receives a parameter with notification
+		this.log = undefined;//a function defined to be executed every time a error occurs, receives a parameter with log
+		this.pendingNames = [];//taxons that have not been assembled as a tree structure
+		this.pendingApiCalls =[];//names of taxons that are awaiting for api request submision
+		this.year = "";//year in wich api request is going to search
+		this.actualYear = (new Date()).getFullYear();//systeam year
+		this.working = false;//flag to se if tree is workign
 		
-		// deben tener el siguiente formato:
-		//{name:"name", start:start}
-		console.log("creating three");
+		//console.log("creating three");
 		let actualTree = this;
-
+		
+		//sets a timer to resolver api calls every 50 ms 
+		//if the total ammount of api requests does not exceds the limit
 		window.setInterval(function(){
 				actualTree.resolveRequests(actualTree);
 		},
-		 100);
+		 50);
 	}
-	  
+	 //returns content from three cache
+	 //run after the query is done
 	createTreeQuery(TaxonName){
 		return this.cache[TaxonName];
 	  
 	}
-
+	//this is executed to start api calls, if the ammount of api calls awaiting does
+	//not exced the limit
+	//builds the tree when download finishes
 	resolveRequests(actualTree){
-		//console.log("verifing pending queries" + this.pendingJobs);
+		//iterates throught pending api calls while there are less api calls than MAX_JOBS
 		while( actualTree.pendingJobs < MAX_JOBS && actualTree.pendingApiCalls.length > 0 ){
 			let nextCall = actualTree.pendingApiCalls.pop();
-			//console.log(nextCall.name);
 			actualTree.apiCallByName(nextCall.name, nextCall.start);
 		}
 		
@@ -69,29 +74,30 @@ class TaxonomyTree {
 		}
 	}
 
-	
+	//assembles the tree estructure from cache
 	buildTree(){
-		console.log("building tree");
-		//console.log(this.pendingNames);
+		//iterates throught pending names
 		for(let taxonIndex = 0; taxonIndex < this.pendingNames.length;taxonIndex++){
-			//console.log(this.cache[this.pendingNames[taxonIndex]]);
-			let children = this.cache[this.pendingNames[taxonIndex]].children;
+			//gets childrend of actual taxon
+			let children = this.cache[this.pendingNames[taxonIndex]].c;
 			//console.log(children);
 			for(let childIndex = 0; childIndex < children.length; childIndex++){
 				let childTaxon = children[childIndex];
-				//console.log(childTaxon);
-				this.cache[this.pendingNames[taxonIndex]].children[childIndex] = this.cache[childTaxon.name];
+				//changes the placeholder for the full taxon stored in cache;
+				this.cache[this.pendingNames[taxonIndex]].c[childIndex] = this.cache[childTaxon.name];
 			}
 		}
+		//empty the list of pending names, they do not need to be assembled again
 		this.pendingNames = [];
-		//console.log(this.cache);
+		
+		//calls callback function
 		if(this.readyCallback !== undefined && typeof this.readyCallback === "function" && this.working){
 			this.working = false;
 			this.readyCallback();
 		}
 		
 	}
-	
+	//unused
 	onApiCallError(){
 		
 	}
@@ -108,17 +114,21 @@ class TaxonomyTree {
 	setYear(newYear){
 		this.year = newYear;
 	}
-	//solicita al api utilizando nombre
+	//parameters: name of target specie, start index, return maximun of 50 results per api call
 	apiCallByName(TaxonName,start){
 		this.working = true;
 		//register and api call awaiting response
 		this.pendingJobs++;
 		
 		let xhttpName;
-		//console.log("api call by id: " + TaxonName);
-		if(this.year.length > 3){
+		//chose which of the links to use
+		if(this.year.length > 3 && this.year != this.actualYear){
+			if( parseInt(this.year) < 2015 ){
+					format = "xml";
+				}else{
+					format = "json";
+				}
 			xhttpName = createCORSRequest("GET",especies2000urlRaw + this.year+queryFlags+"name="+TaxonName+"&start="+start);
-			//console.log(especies2000urlRaw + this.year+"/webservice?"+queryFlags+"name="+TaxonName+"&start="+start);
 		}else{
 		//create httprequest
 			xhttpName = createCORSRequest("GET",especies2000url+queryFlags+"name="+TaxonName+"&start="+start);
@@ -133,85 +143,61 @@ class TaxonomyTree {
         }
 		xhttpName.send();
 	}
-	//solicita al api utilizando id
-	/*apiCallById(TaxonId){
-		let xhttpId = createCORSRequest("GET",especies2000url+queryFlags+"id="+TaxonId);
-		//console.log("api call by name: " + TaxonName);
-		
-		//create httprequest
-		let xhttpId = createCORSRequest("GET",especies2000url+queryFlags+"name="+TaxonName+"&start="+start);
-		
-		let myself = this;
-		xhttpId.onreadystatechange = function (xhr) {
-             myself.handleResult(xhttpId);
-         };
-        
-		xhttpId.send();
-	}*/
-  //se encarga de recibir un result de el api especies2000
-  //recibe al arbol como parametro
+	
+  //executed when an api call is completed
+  //gets xmlhttprequest as parameter
 	handleResult(xhr){
+		//correct execution of api call
 		if (xhr.readyState == 4 && xhr.status == 200) {
 			//register api call back complete
 			this.pendingJobs--;
 			this.completeJobs++;
 			
 			let parsedResult;
+			//parses from json or xml, acording to the variable format
 			if(format == "json"){
 				let responseText= xhr.responseText;
 				parsedResult = JSON.parse(responseText);
 			}else if(format == "xml"){
 				let responseXml= xhr.responseText;
 				let preprocesedResult = xmlToJSON.parseString(responseXml,xmlParserOptions);
-				//console.log(preprocesedResult);
 				parsedResult = parseConvertedXml(preprocesedResult.results[0]);
-				//console.log(converted);
 			}
 
-			//if(this.year != undefined && parseInt(this.year) < 2015){
-			//parsedResult = StringToXML(responseText);
-			//parsedResult = xmlToJson(parsedResult);
-			/*}else{
-				parsedResult = JSON.parse(responseText);
-			}*/
-			//console.log(parsedResult);
-			//si no se cargo la busqueda completa
+	
+			//if there are pending results to be procesed, starts a new api call from the current las received result
 			if(parsedResult.start + parsedResult.number_of_results_returned < parsedResult.total_number_of_results){
 				let pendingApiCall = {};
 						pendingApiCall["name"] = parsedResult.name;
 						pendingApiCall["start"] = parsedResult.start+parsedResult.number_of_results_returned;
 						this.pendingApiCalls.unshift(pendingApiCall);
-				//this.apiCallByName(parsedResult.name,parsedResult.start+parsedResult.number_of_results_returned);
 			}
 			
 			
 			
 			//converts results to desired format
 			let results = this.processResult(parsedResult);
-			//console.log(results);
 			//sets a query for childTaxa whose info is not complete
 			for(let resultIndex = 0; resultIndex < results.length; resultIndex++){
-				let childrenTaxa = results[resultIndex].children;
+				let childrenTaxa = results[resultIndex].c;
 				//if child has not been loaded
 				for(let childIndex = 0; childIndex < childrenTaxa.length;childIndex++){
 					let actualChildTaxon =  childrenTaxa[childIndex];
-					if(!this.cache.hasOwnProperty(actualChildTaxon.name)){
-						//this.apiCallByName(actualChildTaxon.name,0);
+					if(!this.cache.hasOwnProperty(actualChildTaxon.n)){
 						let pendingApiCall = {};
 						pendingApiCall["name"] = actualChildTaxon.name;
 						pendingApiCall["start"] = 0;
-						this.pendingApiCalls.unshift(pendingApiCall);
-						//console.log(actualChildTaxon);
+						this.pendingApiCalls.unshift(pendingApiCall);//set pending api call
 					}
 				}
 			}
-			//console.log("loaded result pending jobs: " + this.pendingJobs);
 			
 			
-
+		//error
 		}else if(xhr.readyState == 4){
 			//se termino de manera incorrecta el request
 			this.pendingJobs--;
+			//cals log function
 			if(this.log != undefined){
 				this.log("Error " + xhr.status + " : "+xhr.responseURL + "\n");
 			}
@@ -233,19 +219,28 @@ class TaxonomyTree {
 			//ignores loaded taxons
 			if(!this.cache.hasOwnProperty(procesedTaxon.name)){
 				let result = this.extractData(procesedTaxon);
-				this.cache[result.name] = result;
+				this.cache[result.n] = result;
 				results.push(result);
 				
 				//add to the list of name pending to be added on the three
-				this.pendingNames.push(result.name);
+				this.pendingNames.push(result.n);
 			}
 			
 			
 		}
 		return results;
 	}
-	
-	//catalogue of life format
+	//modificacion para ahorrar formato
+	/*
+	name = n 
+	Synonym = s
+	author = a [a,b]
+	author_date = ad
+	record_scrutiny_date = rsd
+	children = c
+	rank = r	 
+	 */
+	 //extracts data from result json and outpus a json in our format
 	extractData(originalJson){
 		let newTaxon = {};
 		
@@ -258,27 +253,37 @@ class TaxonomyTree {
 			newChildTaxons.push({name: originalChildren[childIndex].name});
 		}
 		}		
-		newTaxon.name = originalJson.name;
-		newTaxon.author = originalJson.author;
+		newTaxon.n = originalJson.name;
+		newTaxon.a = undefined;
+		//newTaxon.author_date = undefined;
+		if(originalJson.author !== undefined){
+			newTaxon.a = originalJson.author.split(",");
+			
+		}
+		
 		let scrutinyDate = originalJson.record_scrutiny_date;
 		if(scrutinyDate !== undefined){
-			newTaxon.record_scrutiny_date = scrutinyDate.scrutiny;
+			newTaxon.rsd = scrutinyDate.scrutiny;
 		}else{
-			newTaxon.record_scrutiny_date = undefined;
+			newTaxon.rsd = undefined;
 		}
 
-		newTaxon.Synonym = originalJson.synonyms;
-		newTaxon.children = newChildTaxons;
-		newTaxon.author = originalJson.author;
-		newTaxon.rank = originalJson.rank;
-		//console.log(newTaxon);
-		
+		newTaxon.s = [];
+		if(originalJson.synonyms !== undefined){
+				let synonyms = originalJson.synonyms;
+				for(let i = 0; i < synonyms.length; i++){
+						newTaxon.s.push(synonyms[i].name);
+				}
+		}
+		newTaxon.c = newChildTaxons;
+		newTaxon.r = originalJson.rank;
+
 		
 		return newTaxon;
 	}
 }
 
-
+//receives a xml results and parse it
 function parseConvertedXml(convertedJson){
 	//console.log(convertedJson);
 	processedJson = {};
@@ -297,7 +302,7 @@ function parseConvertedXml(convertedJson){
 	//console.log(processedJson);
 	return processedJson;
 	}
-	
+//receives a child in xmlJson converted format and parses it
 function loadParsedXmlResult(jsonXmlChild){
 		let newResult = {};
 		//console.log(jsonXmlChild);
@@ -322,6 +327,18 @@ function loadParsedXmlResult(jsonXmlChild){
 				let processedChild =  {}; //childrenArray[childrenIndex];
 				processedChild.name= childrenArray[childrenIndex].name[0]["_value"];
 				newResult.child_taxa.push(processedChild);
+				//console.log(processedChild);
+			}
+		}
+		
+		newResult.synonyms = [];
+		if(jsonXmlChild.synonyms !== undefined && jsonXmlChild.synonyms[0].synonym !== undefined){
+			let synonymsArray = jsonXmlChild.synonyms[0].synonym;
+			//console.log(childrenArray);
+			for(let synonymIndex = 0; synonymIndex < synonymsArray.length;synonymIndex++){
+				let processedSynonym =  {}; //childrenArray[childrenIndex];
+				processedSynonym.name= synonymsArray[synonymIndex].name[0]["_value"];
+				newResult.synonyms.push(processedSynonym);
 				//console.log(processedChild);
 			}
 		}
