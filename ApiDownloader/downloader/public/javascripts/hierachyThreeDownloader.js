@@ -1,11 +1,29 @@
-
-var especies2000url = "http://webservice.catalogueoflife.org/col/webservice?";
+var format = "xml" // options are xml or json
+var especies2000url = "http://webservice.catalogueoflife.org/col/";
 var especies2000urlRaw = "http://www.catalogueoflife.org/annual-checklist/";
-var queryFlags = "format=json&response=full&"
+var queryFlags = "webservice?format="+format+"&response=full&"
 //TODO
 //reapara xml antes del 2015
 //reparar on error en http request
 var MAX_JOBS = 100;
+
+var xmlParserOptions = {
+	mergeCDATA: true,	// extract cdata and merge with text nodes
+	grokAttr: false,		// convert truthy attributes to boolean, etc
+	grokText: false,		// convert truthy text/attr to boolean, etc
+	normalize: true,	// collapse multiple spaces to single space
+	xmlns: true, 		// include namespaces as attributes in output
+	namespaceKey: '_ns', 	// tag name for namespace objects
+	textKey: '_value', 	// tag name for text nodes
+	valueKey: '_value', 	// tag name for attribute values
+	attrKey: 'attributes', 	// tag for attr groups
+	cdataKey: '_value',	// tag for cdata nodes (ignored if mergeCDATA is true)
+	attrsAsObject: true, 	// if false, key is used as prefix to name, set prefix to '' to merge children and attrs.
+	stripAttrPrefix: true, 	// remove namespace prefixes from attributes
+	stripElemPrefix: false, 	// for elements of same name in diff namespaces, you can enable namespaces and access the nskey property
+	childrenAsArray: true 	// force children into arrays
+};	
+
 
 class TaxonomyTree {
 	
@@ -15,6 +33,7 @@ class TaxonomyTree {
 		this.completeJobs = 0;
 		this.readyCallback = undefined;
 		this.notify = undefined;
+		this.log = undefined;
 		this.pendingNames = [];
 		this.pendingApiCalls =[];
 		this.year = "";
@@ -83,6 +102,9 @@ class TaxonomyTree {
 	setNotify(notifyFunction){
 		this.notify = notifyFunction;
 	}
+	setLog(logFunction){
+		this.log = logFunction;
+	}
 	setYear(newYear){
 		this.year = newYear;
 	}
@@ -95,7 +117,7 @@ class TaxonomyTree {
 		let xhttpName;
 		//console.log("api call by id: " + TaxonName);
 		if(this.year.length > 3){
-			xhttpName = createCORSRequest("GET",especies2000urlRaw + this.year+"/webservice?"+queryFlags+"name="+TaxonName+"&start="+start);
+			xhttpName = createCORSRequest("GET",especies2000urlRaw + this.year+queryFlags+"name="+TaxonName+"&start="+start);
 			//console.log(especies2000urlRaw + this.year+"/webservice?"+queryFlags+"name="+TaxonName+"&start="+start);
 		}else{
 		//create httprequest
@@ -134,14 +156,24 @@ class TaxonomyTree {
 			this.pendingJobs--;
 			this.completeJobs++;
 			
-			let responseText = xhr.responseText;
 			let parsedResult;
-			if(this.year != undefined && parseInt(this.year) < 2015){
-				parsedResult = StringToXML(responseText);
-				parsedResult = xmlToJson(parsedResult);
-			}else{
+			if(format == "json"){
+				let responseText= xhr.responseText;
 				parsedResult = JSON.parse(responseText);
+			}else if(format == "xml"){
+				let responseXml= xhr.responseText;
+				let preprocesedResult = xmlToJSON.parseString(responseXml,xmlParserOptions);
+				//console.log(preprocesedResult);
+				parsedResult = parseConvertedXml(preprocesedResult.results[0]);
+				//console.log(converted);
 			}
+
+			//if(this.year != undefined && parseInt(this.year) < 2015){
+			//parsedResult = StringToXML(responseText);
+			//parsedResult = xmlToJson(parsedResult);
+			/*}else{
+				parsedResult = JSON.parse(responseText);
+			}*/
 			//console.log(parsedResult);
 			//si no se cargo la busqueda completa
 			if(parsedResult.start + parsedResult.number_of_results_returned < parsedResult.total_number_of_results){
@@ -177,11 +209,13 @@ class TaxonomyTree {
 			
 			
 
-		}else if(xhr.readyState == 4 && xhr.status == 500){
+		}else if(xhr.readyState == 4){
+			//se termino de manera incorrecta el request
 			this.pendingJobs--;
-			console.log("Error on api side, failed tp retrieve query :(")
+			if(this.log != undefined){
+				this.log("Error " + xhr.status + " : "+xhr.responseURL + "\n");
+			}
 		}
-
 	}
 	
 	//loads every result
@@ -244,19 +278,57 @@ class TaxonomyTree {
 	}
 }
 
-//usage example
-/*var tree = new TaxonomyTree();
-tree.setOnReadyStatusCallback(
-	function(){
-		let treeResult = tree.createTreeQuery("Apus");
-		console.log(treeResult);
-		
+
+function parseConvertedXml(convertedJson){
+	//console.log(convertedJson);
+	processedJson = {};
+	processedJson.name = convertedJson.attributes.name["_value"];
+	processedJson.number_of_results_returned = convertedJson.attributes.number_of_results_returned["_value"];
+	processedJson.start = convertedJson.attributes.start["_value"];
+	processedJson.total_number_of_results = convertedJson.attributes.total_number_of_results["_value"];
+	processedJson.results = [];
+	//iterate throught results array
+	if(convertedJson.result !== undefined){
+		for(let i = 0; i < convertedJson.result.length; i++){
+			let newResult = loadParsedXmlResult(convertedJson.result[i]);
+			processedJson.results.push(newResult);
+		}
 	}
-);
-tree.apiCallByName("apus");
-*/
-
-
+	//console.log(processedJson);
+	return processedJson;
+	}
+	
+function loadParsedXmlResult(jsonXmlChild){
+		let newResult = {};
+		//console.log(jsonXmlChild);
+		newResult.name = jsonXmlChild.name[0]["_value"];
+		newResult.child_taxa = [];
+		
+		if(jsonXmlChild.author !== undefined){
+			newResult.author = jsonXmlChild.author[0]["_value"];
+		}
+		if(jsonXmlChild.scrutinyDate !== undefined){
+			newResult.scrutinyDate = jsonXmlChild.scrutinyDate[0]["_value"];
+		}
+		if(jsonXmlChild.rank !== undefined){
+			newResult.rank = jsonXmlChild.rank[0]["_value"];
+		}
+		newResult.child_taxa = [];
+		//console.log(jsonXmlChild.child_taxa);
+		if(jsonXmlChild.child_taxa !== undefined && jsonXmlChild.child_taxa[0].taxon !== undefined){
+			let childrenArray = jsonXmlChild.child_taxa[0].taxon;
+			//console.log(childrenArray);
+			for(let childrenIndex = 0; childrenIndex < childrenArray.length;childrenIndex++){
+				let processedChild =  {}; //childrenArray[childrenIndex];
+				processedChild.name= childrenArray[childrenIndex].name[0]["_value"];
+				newResult.child_taxa.push(processedChild);
+				//console.log(processedChild);
+			}
+		}
+		
+		
+		return newResult;
+	}
 
 
 
@@ -277,57 +349,16 @@ function createCORSRequest(method, url) {
   return xhr;
 }
 
-
-//from https://davidwalsh.name/convert-xml-json
-// Changes XML to JSON
-function xmlToJson(xml) {
-	
-	// Create the return object
-	var obj = {};
-
-	if (xml.nodeType == 1) { // element
-		// do attributes
-		if (xml.attributes.length > 0) {
-		obj["@attributes"] = {};
-			for (var j = 0; j < xml.attributes.length; j++) {
-				var attribute = xml.attributes.item(j);
-				obj["@attributes"][attribute.nodeName] = attribute.nodeValue;
-			}
-		}
-	} else if (xml.nodeType == 3) { // text
-		obj = xml.nodeValue;
+//usage example
+/*var tree = new TaxonomyTree();
+tree.setOnReadyStatusCallback(
+	function(){
+		let treeResult = tree.createTreeQuery("Apus");
+		console.log(treeResult);
+		
 	}
-
-	// do children
-	if (xml.hasChildNodes()) {
-		for(var i = 0; i < xml.childNodes.length; i++) {
-			var item = xml.childNodes.item(i);
-			var nodeName = item.nodeName;
-			if (typeof(obj[nodeName]) == "undefined") {
-				obj[nodeName] = xmlToJson(item);
-			} else {
-				if (typeof(obj[nodeName].push) == "undefined") {
-					var old = obj[nodeName];
-					obj[nodeName] = [];
-					obj[nodeName].push(old);
-				}
-				obj[nodeName].push(xmlToJson(item));
-			}
-		}
-	}
-	return obj;
-};
+);
+tree.apiCallByName("apus");
+*/
 
 
-//from https://www.dotnettricks.com/learn/javascript/convert-string-to-xml-and-xml-to-string-using-javascript
-function StringToXML(oString) {
- //code for IE
- if (window.ActiveXObject) { 
- var oXML = new ActiveXObject("Microsoft.XMLDOM"); oXML.loadXML(oString);
- return oXML;
- }
- // code for Chrome, Safari, Firefox, Opera, etc. 
- else {
- return (new DOMParser()).parseFromString(oString, "text/xml");
- }
-}

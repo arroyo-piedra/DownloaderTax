@@ -1,5 +1,13 @@
 var tree = new TaxonomyTree();
-tree.setNotify(Notify)
+tree.setNotify(Notify);
+var logString = "";
+
+tree.setLog(function(logContent){
+		logString = logString + logContent;
+	
+	});
+
+//console.log(tree.log);
 /*tree.setOnReadyStatusCallback(
 	function(){
 		let treeResult = tree.createTreeQuery("Apus");
@@ -45,7 +53,19 @@ $(function () {
 					a.textContent = "Download backup.json";
 					//$("#resultadoName").append(a)
 					// no compatible con todos los navegadores
-					a.click(); 
+					a.click();
+					
+					//console.log(logString);
+					if(logString.length > 1){
+						let logBlob = new Blob([logString], {type: "application/json"});
+						let logUrl  = URL.createObjectURL(logBlob);
+						a.download    = name+"_log"+".log";
+						a.href        = logUrl;
+						a.textContent = "Download log.json";
+						a.click();
+						logString = "";
+					}
+					
 			}
 			);
         }
