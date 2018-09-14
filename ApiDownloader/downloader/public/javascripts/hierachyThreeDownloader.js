@@ -6,6 +6,11 @@ var queryFlags = "/webservice?format="+format+"&response=full&" //flags to shape
 
 var MAX_JOBS = 100; // max ammount of api requests that can exist  at the same time
 
+//regular expressions for author recognition
+var botanyPattern = /\s&\s|\set\s|\sex\s/
+var zoologyPattern = /\(|\)/g
+var regularPattern = /,/g
+
 
 //options for the xml to json conversion
 //any change would require to adapt de parser
@@ -254,10 +259,13 @@ class TaxonomyTree {
 		}
 		}		
 		newTaxon.n = originalJson.name;
-		newTaxon.a = undefined;
+		newTaxon.a = [];
+		newTaxon.ad = [];
 		//newTaxon.author_date = undefined;
 		if(originalJson.author !== undefined){
-			newTaxon.a = originalJson.author.split(",");
+			let authorInfo = getAuthor(originalJson.author);
+			newTaxon.a = authorInfo.author;
+			newTaxon.ad = authorInfo.authorDate;
 			
 		}
 		
@@ -346,6 +354,38 @@ function loadParsedXmlResult(jsonXmlChild){
 		
 		return newResult;
 	}
+
+
+
+
+
+
+
+
+function getAuthor(authorString){
+    let authorData = {};
+    authorData.authorDate = [];
+    authorData.author = [];
+    let processedData;
+	if(botanyPattern.exec(authorString)){
+        processedData = authorString.split(botanyPattern);
+    }else if(zoologyPattern.exec(authorString)){
+        authorString = authorString.replace(zoologyPattern,'');
+        processedData = authorString.split(regularPattern);
+    }else{
+        processedData = authorString.split(regularPattern);
+    }   
+    for(let i = 0; i < processedData.length; i++){
+        let actualString = processedData[i].trim();
+        if(isNaN(Number(actualString))){
+            authorData.author.push(actualString);
+        }else{
+            authorData.authorDate.push(actualString);
+        }
+        //print(Number(processedData[i]));
+    }
+	return authorData;
+}
 
 
 
