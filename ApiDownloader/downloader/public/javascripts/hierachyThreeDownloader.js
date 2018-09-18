@@ -1,7 +1,8 @@
 var format = "json" // options are xml or json, probably should not be a global variable
 //se inicia a utilizar el proxy https://cors.io/?
-var especies2000url = "https://cors.io/?http://webservice.catalogueoflife.org/col"; //direction for current year
-var especies2000urlRaw = "https://cors.io/?http://www.catalogueoflife.org/annual-checklist/"; //direction that needs year specified
+var proxyUrl = "http://127.0.0.1:5757/";
+var especies2000url = "http://webservice.catalogueoflife.org/col"; //direction for current year
+var especies2000urlRaw = "http://www.catalogueoflife.org/annual-checklist/"; //direction that needs year specified
 var queryFlags = "/webservice?format="+format+"&response=full&" //flags to shape the query
 
 
@@ -11,6 +12,7 @@ var MAX_JOBS = 100; // max ammount of api requests that can exist  at the same t
 var botanyPattern = /\s&\s|\set\s|\sex\s/
 var zoologyPattern = /\(|\)/g
 var regularPattern = /,/g
+
 
 
 //options for the xml to json conversion
@@ -128,20 +130,24 @@ class TaxonomyTree {
 		
 		let xhttpName;
 		//chose which of the links to use
+		let url = "";
+		
 		if(this.year.length > 3 && this.year != this.actualYear){
 			if( parseInt(this.year) < 2015 ){
 					format = "xml";
 				}else{
 					format = "json";
 				}
-			xhttpName = createCORSRequest("GET",especies2000urlRaw + this.year+queryFlags+"name="+TaxonName+"&start="+start);
+			xhttpName = createCORSRequest("GET",proxyUrl+especies2000urlRaw + this.year+queryFlags+"name="+TaxonName+"&start="+start);
+			url = especies2000urlRaw + this.year+queryFlags+"name="+TaxonName+"&start="+start;
 		}else{
 		//create httprequest
-			xhttpName = createCORSRequest("GET",especies2000url+queryFlags+"name="+TaxonName+"&start="+start);
+			xhttpName = createCORSRequest("GET",proxyUrl+especies2000url+queryFlags+"name="+TaxonName+"&start="+start);
+			url = especies2000url+queryFlags+"name="+TaxonName+"&start="+start;
 		}
 		let myself = this;
 		xhttpName.onreadystatechange = function (xhr) {
-             myself.handleResult(xhttpName);
+             myself.handleResult(xhttpName, url);
          };
          if(this.notify !== undefined){
 			this.notify(TaxonName + " & " + this.pendingJobs+ " more...  Completed:" + this.completeJobs);
@@ -152,7 +158,7 @@ class TaxonomyTree {
 	
   //executed when an api call is completed
   //gets xmlhttprequest as parameter
-	handleResult(xhr){
+	handleResult(xhr, url){
 		//correct execution of api call
 		if (xhr.readyState == 4 && xhr.status == 200) {
 			//register api call back complete
@@ -205,7 +211,7 @@ class TaxonomyTree {
 			this.pendingJobs--;
 			//cals log function
 			if(this.log != undefined){
-				this.log("Error " + xhr.status + " : "+xhr.responseURL + "\n");
+				this.log("Error " + xhr.status + " : "+ url + "\n");
 			}
 		}
 	}
@@ -407,6 +413,8 @@ function createCORSRequest(method, url) {
   return xhr;
 }
 
+
+	
 //usage example
 /*var tree = new TaxonomyTree();
 tree.setOnReadyStatusCallback(

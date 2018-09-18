@@ -9,12 +9,7 @@ var indexRouter = require('./routes/index');
 var usersRouter = require('./routes/users');
 
 var app = express();
-
-var corsOptions = {
-  origin: 'http://www.catalogueoflife.org/',
-  optionsSuccessStatus: 200 // some legacy browsers (IE11, various SmartTVs) choke on 204
-}
-app.use(cors(corsOptions));
+var cors_proxy = require('cors-anywhere');
 
 
 // view engine setup
@@ -29,8 +24,6 @@ app.use(express.static(path.join(__dirname, 'public')));
 
 app.use('/', indexRouter);
 app.use('/users', usersRouter);
-//allow cros domain
-//app.use(cors());
 
 
 // catch 404 and forward to error handler
@@ -49,4 +42,33 @@ app.use(function(err, req, res, next) {
   res.render('error');
 });
 
+
 module.exports = app;
+
+
+
+
+
+
+
+
+
+//cross domain proxy
+// Listen on a specific host via the HOST environment variable
+var host = process.env.HOST || '127.0.0.1';
+// Listen on a specific port via the PORT environment variable
+var port = process.env.PORT || 5757;
+ 
+var cors_proxy = require('cors-anywhere');
+cors_proxy.createServer({
+    originWhitelist: [], // Allow all origins
+    requireHeader: ['origin', 'x-requested-with'],
+    removeHeaders: ['cookie', 'cookie2']
+}).listen(port, host, function() {
+    console.log('Running CORS Anywhere on ' + host + ':' + port);
+});
+
+
+
+
+
