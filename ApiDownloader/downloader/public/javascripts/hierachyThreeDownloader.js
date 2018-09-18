@@ -1,6 +1,7 @@
 var format = "json" // options are xml or json, probably should not be a global variable
-var especies2000url = "http://webservice.catalogueoflife.org/col"; //direction for current year
-var especies2000urlRaw = "http://www.catalogueoflife.org/annual-checklist/"; //direction that needs year specified
+//se inicia a utilizar el proxy https://cors.io/?
+var especies2000url = "https://cors.io/?http://webservice.catalogueoflife.org/col"; //direction for current year
+var especies2000urlRaw = "https://cors.io/?http://www.catalogueoflife.org/annual-checklist/"; //direction that needs year specified
 var queryFlags = "/webservice?format="+format+"&response=full&" //flags to shape the query
 
 
