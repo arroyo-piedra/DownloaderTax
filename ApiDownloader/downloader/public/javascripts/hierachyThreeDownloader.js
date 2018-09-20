@@ -73,7 +73,7 @@ class TaxonomyTree {
 		//iterates throught pending api calls while there are less api calls than MAX_JOBS
 		while( actualTree.pendingJobs < MAX_JOBS && actualTree.pendingApiCalls.length > 0 ){
 			let nextCall = actualTree.pendingApiCalls.pop();
-			actualTree.apiCallByName(nextCall.name, nextCall.start);
+			actualTree.apiCallById(nextCall.id, nextCall.start);
 		}
 		
 		//we finished downloading the three, is time to build
@@ -85,14 +85,24 @@ class TaxonomyTree {
 	//assembles the tree estructure from cache
 	buildTree(){
 		//iterates throught pending names
+		//console.log(this.cache);
 		for(let taxonIndex = 0; taxonIndex < this.pendingNames.length;taxonIndex++){
 			//gets childrend of actual taxon
+			//console.log(this.pendingNames[taxonIndex]);
 			let children = this.cache[this.pendingNames[taxonIndex]].c;
 			//console.log(children);
 			for(let childIndex = 0; childIndex < children.length; childIndex++){
 				let childTaxon = children[childIndex];
 				//changes the placeholder for the full taxon stored in cache;
-				this.cache[this.pendingNames[taxonIndex]].c[childIndex] = this.cache[childTaxon.name];
+				//console.log(childTaxon);
+				if(childTaxon.id !== undefined){
+					this.cache[this.pendingNames[taxonIndex]].c[childIndex] = this.cache[childTaxon.id];
+					//console.log(this.cache[childTaxon.id]);
+				}else{
+					this.cache[this.pendingNames[taxonIndex]].c[childIndex] = this.cache[childTaxon.name];
+					//console.log(this.cache[childTaxon.name]);
+				}
+				
 			}
 		}
 		//empty the list of pending names, they do not need to be assembled again
@@ -149,13 +159,39 @@ class TaxonomyTree {
 		xhttpName.onreadystatechange = function (xhr) {
              myself.handleResult(xhttpName, url);
          };
-         if(this.notify !== undefined){
-			this.notify(TaxonName + " & " + this.pendingJobs+ " more...  Completed:" + this.completeJobs);
-			//console.log(TaxonName + " " + this.pendingJobs+ " more...  Completed:" + this.completeJobs);
-        }
+        
 		xhttpName.send();
 	}
-	
+	//parameters: id of target specie, start index, return maximun of 50 results per api call
+	apiCallById(TaxonId,start){
+		this.working = true;
+		//register and api call awaiting response
+		this.pendingJobs++;
+		
+		let xhttpId;
+		//chose which of the links to use
+		let url = "";
+		
+		if(this.year.length > 3 && this.year != this.actualYear){
+			if( parseInt(this.year) < 2015 ){
+					format = "xml";
+				}else{
+					format = "json";
+				}
+			xhttpId = createCORSRequest("GET",proxyUrl+especies2000urlRaw + this.year+queryFlags+"id="+TaxonId+"&start="+start);
+			url = especies2000urlRaw + this.year+queryFlags+"id="+TaxonId+"&start="+start;
+		}else{
+		//create httprequest
+			xhttpId = createCORSRequest("GET",proxyUrl+especies2000url+queryFlags+"id="+TaxonId+"&start="+start);
+			url = especies2000url+queryFlags+"id="+TaxonId+"&start="+start;
+		}
+		let myself = this;
+		xhttpId.onreadystatechange = function (xhr) {
+             myself.handleResult(xhttpId, url);
+         };
+
+		xhttpId.send();
+	}
   //executed when an api call is completed
   //gets xmlhttprequest as parameter
 	handleResult(xhr, url){
@@ -181,6 +217,7 @@ class TaxonomyTree {
 			if(parsedResult.start + parsedResult.number_of_results_returned < parsedResult.total_number_of_results){
 				let pendingApiCall = {};
 						pendingApiCall["name"] = parsedResult.name;
+						pendingApiCall["id"] = parsedResult.id;
 						pendingApiCall["start"] = parsedResult.start+parsedResult.number_of_results_returned;
 						this.pendingApiCalls.unshift(pendingApiCall);
 			}
@@ -198,7 +235,9 @@ class TaxonomyTree {
 					if(!this.cache.hasOwnProperty(actualChildTaxon.n)){
 						let pendingApiCall = {};
 						pendingApiCall["name"] = actualChildTaxon.name;
+						pendingApiCall["id"] = actualChildTaxon.id;
 						pendingApiCall["start"] = 0;
+						//console.log(pendingApiCall);
 						this.pendingApiCalls.unshift(pendingApiCall);//set pending api call
 					}
 				}
@@ -229,13 +268,29 @@ class TaxonomyTree {
 			
 			//verifies if taxon has been loaded
 			//ignores loaded taxons
-			if(!this.cache.hasOwnProperty(procesedTaxon.name)){
+			if(!this.cache.hasOwnProperty(procesedTaxon.name) && !this.cache.hasOwnProperty(procesedTaxon.id)){
 				let result = this.extractData(procesedTaxon);
+				//console.log(procesedTaxon);
+				if(procesedTaxon.id !== undefined){
+					//console.log(procesedTaxon.id);
+					this.cache[procesedTaxon.id] = result;
+					//add to the list of id pending to be added on the three
+					this.pendingNames.push(procesedTaxon.id);
+				}else{
+					this.pendingNames.push(procesedTaxon.name);
+				}
 				this.cache[result.n] = result;
 				results.push(result);
-				
 				//add to the list of name pending to be added on the three
-				this.pendingNames.push(result.n);
+				//this.pendingNames.push(result.n);
+					
+				
+				//feedback of download procces
+				if(this.notify !== undefined){
+					this.notify(result.n + " & " + this.pendingJobs+ " more...  Completed:" + this.completeJobs);
+					//console.log(TaxonName + " " + this.pendingJobs+ " more...  Completed:" + this.completeJobs);
+				}
+
 			}
 			
 			
@@ -262,7 +317,11 @@ class TaxonomyTree {
 		//load every children in the json
 		if(originalChildren !== undefined){
 		for(let childIndex = 0; childIndex < originalChildren.length ;childIndex++ ){
-			newChildTaxons.push({name: originalChildren[childIndex].name});
+			let newChild = {};
+			newChild.name = originalChildren[childIndex].name;
+			newChild.id = originalChildren[childIndex].id;
+			//console.log(newChild);
+			newChildTaxons.push(newChild);
 		}
 		}		
 		newTaxon.n = originalJson.name;
@@ -293,7 +352,7 @@ class TaxonomyTree {
 		newTaxon.c = newChildTaxons;
 		newTaxon.r = originalJson.rank;
 
-		
+		//console.log(newTaxon.c);
 		return newTaxon;
 	}
 }
@@ -303,6 +362,8 @@ function parseConvertedXml(convertedJson){
 	//console.log(convertedJson);
 	processedJson = {};
 	processedJson.name = convertedJson.attributes.name["_value"];
+	processedJson.id = convertedJson.attributes.id["_value"];
+	//console.log(processedJson.id);
 	processedJson.number_of_results_returned = convertedJson.attributes.number_of_results_returned["_value"];
 	processedJson.start = convertedJson.attributes.start["_value"];
 	processedJson.total_number_of_results = convertedJson.attributes.total_number_of_results["_value"];
@@ -322,6 +383,7 @@ function loadParsedXmlResult(jsonXmlChild){
 		let newResult = {};
 		//console.log(jsonXmlChild);
 		newResult.name = jsonXmlChild.name[0]["_value"];
+		newResult.id = jsonXmlChild.id[0]["_value"];
 		newResult.child_taxa = [];
 		
 		if(jsonXmlChild.author !== undefined){
@@ -341,6 +403,8 @@ function loadParsedXmlResult(jsonXmlChild){
 			for(let childrenIndex = 0; childrenIndex < childrenArray.length;childrenIndex++){
 				let processedChild =  {}; //childrenArray[childrenIndex];
 				processedChild.name= childrenArray[childrenIndex].name[0]["_value"];
+				processedChild.id = childrenArray[childrenIndex].id[0]["_value"];
+				//console.log(processedChild);
 				newResult.child_taxa.push(processedChild);
 				//console.log(processedChild);
 			}
