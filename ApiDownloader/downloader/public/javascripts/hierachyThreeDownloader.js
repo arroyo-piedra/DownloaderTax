@@ -7,6 +7,7 @@ var queryFlags = "/webservice?format="+format+"&response=full&" //flags to shape
 
 
 var MAX_JOBS = 100; // max ammount of api requests that can exist  at the same time
+var MAX_RETRYS = 15;
 
 //regular expressions for author recognition
 var botanyPattern = /\s&\s|\set\s|\sex\s/
@@ -63,7 +64,7 @@ class TaxonomyTree {
 	 //returns content from three cache
 	 //run after the query is done
 	createTreeQuery(TaxonName){
-		return this.cache[TaxonName];
+		return this.cache[TaxonName.toLowerCase()];
 	  
 	}
 	//this is executed to start api calls, if the ammount of api calls awaiting does
@@ -99,7 +100,7 @@ class TaxonomyTree {
 					this.cache[this.pendingNames[taxonIndex]].c[childIndex] = this.cache[childTaxon.id];
 					//console.log(this.cache[childTaxon.id]);
 				}else{
-					this.cache[this.pendingNames[taxonIndex]].c[childIndex] = this.cache[childTaxon.name];
+					this.cache[this.pendingNames[taxonIndex]].c[childIndex] = this.cache[childTaxon.name.toLowerCase()];
 					//console.log(this.cache[childTaxon.name]);
 				}
 				
@@ -157,7 +158,7 @@ class TaxonomyTree {
 		}
 		let myself = this;
 		xhttpName.onreadystatechange = function (xhr) {
-             myself.handleResult(xhttpName, url);
+             myself.handleResult(xhttpName, url,0);
          };
         
 		xhttpName.send();
@@ -187,14 +188,14 @@ class TaxonomyTree {
 		}
 		let myself = this;
 		xhttpId.onreadystatechange = function (xhr) {
-             myself.handleResult(xhttpId, url);
+             myself.handleResult(xhttpId, url,0);
          };
 
 		xhttpId.send();
 	}
   //executed when an api call is completed
   //gets xmlhttprequest as parameter
-	handleResult(xhr, url){
+	handleResult(xhr, url,retry){
 		//correct execution of api call
 		if (xhr.readyState == 4 && xhr.status == 200) {
 			//register api call back complete
@@ -244,8 +245,30 @@ class TaxonomyTree {
 			}
 			
 			
-		//error
-		}else if(xhr.readyState == 4){
+		//error not found, going to retry
+		}else if(xhr.readyState == 4 && xhr.status == 404){
+			//retry not found error
+			if(retry < MAX_RETRYS){
+			let retryRequest = createCORSRequest("GET",url);
+			let myself = this;
+			etryRequest.onreadystatechange = function (xhr) {
+				myself.handleResult(xhttpName, url,retry+1);
+			};
+        
+			retryRequest.send();
+			//error repeated MAX_RETRYS times, dont bother anymore
+			}else{
+				//se termino de manera incorrecta el request
+				this.pendingJobs--;
+				//cals log function
+				if(this.log != undefined){
+					this.log("Error " + xhr.status + " : "+ url + "\n");
+				}
+			}
+			
+		}
+		//maybe i should retry all errors
+		else if(xhr.readyState == 4){
 			//se termino de manera incorrecta el request
 			this.pendingJobs--;
 			//cals log function
@@ -277,9 +300,9 @@ class TaxonomyTree {
 					//add to the list of id pending to be added on the three
 					this.pendingNames.push(procesedTaxon.id);
 				}else{
-					this.pendingNames.push(procesedTaxon.name);
+					this.pendingNames.push(procesedTaxon.name.toLowerCase());
 				}
-				this.cache[result.n] = result;
+				this.cache[result.n.toLowerCase()] = result;
 				results.push(result);
 				//add to the list of name pending to be added on the three
 				//this.pendingNames.push(result.n);
