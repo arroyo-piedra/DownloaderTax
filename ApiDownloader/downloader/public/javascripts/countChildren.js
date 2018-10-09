@@ -7,7 +7,8 @@ var ranks = {
   "order" : 4,
   "family" : 5,
   "genus" : 6,
-  "species" : 7
+  "species" : 7,
+  "Infraspecies":8
   
 };
 
@@ -35,6 +36,23 @@ function proccesByLevel(root,proccesFunction){
   }
   
   
+}
+
+function proccesByLevelConditional(root,proccesFunction,name,value){
+  let pendingNodes = [];
+  pendingNodes.push(root);
+  while(pendingNodes.length > 0){
+    let actual = pendingNodes.pop();
+    if(actual !== null && actual !== undefined){
+    for(childIndex = 0; childIndex < actual.c.length; childIndex++){
+      if(actual[name] == value){
+        pendingNodes.unshift(actual.c[childIndex]);
+      }
+      }
+    proccesFunction(actual);
+    }
+  }
+ 
 }
 
 function addParameterToNode(node,name,value,minRank,maxRank
@@ -194,7 +212,8 @@ function createRankList(treeRoot){
 			"order" : 	[],
 			"family" : 	[],
 			"genus" : 	[],
-			"species" : []
+			"species" : [],
+      "infraspecies":[]
 			};
 		
 		proccesByLevel(treeRoot,function(node){populateRankList(node,ranklist)});
@@ -231,6 +250,9 @@ function countChildren(root){
   memoryTreeIteration(root,function(node,parent){subRankCount(node,parent,rank);});
   rank = "Phylum";
   memoryTreeIteration(root,function(node,parent){subRankCount(node,parent,rank);});
+  rank = "Infraspecies";
+  memoryTreeIteration(root,function(node,parent){subRankCount(node,parent,rank);});
+
 }
 //console.log(tree.n);
 //countChildren(tree);

@@ -3,7 +3,7 @@ var tree2 = {"n":"Microsporidia","a":[],"ad":[],"s":[],"c":[{"n":"Microsporea","
 
 var initOptions = {
     defaultSize : 30,
-    indent : 10,
+    indent : 30,
     increment: 20,
     hsbColor: 30,
     hsbIncrement: 2,
@@ -12,7 +12,9 @@ var initOptions = {
     "width" : 300,
     "height" : 500,
     "background-color" : undefined,
-    "stroke-color" : undefined
+    "stroke-color" : undefined,
+    "hover-color" : undefined,
+    "hover-color-rect" : undefined,
 }
 
 var index = tree;
@@ -30,6 +32,14 @@ var yPointer = 0;
 
 const SCROLL_SPEED = 0.4;
 
+var changed = false;
+var click = false;
+
+
+function MouseClicked(){
+
+}
+
 function setup() {
 	//make canvas size dynamic
 	canvas = createCanvas(windowWidth*totalCanvasWidth, windowHeight*totalCanvasHeight);
@@ -41,6 +51,8 @@ function setup() {
 	//setup optiopns that cannot be initialized before setup
 	initOptions["background-color"] = color(255,180,40);
 	initOptions["stroke-color"] = color(0,0,0);
+	initOptions["hover-color"] = color(249,211,149);
+	initOptions["hover-color-rect"] = color(48, 44, 66);
   
 	countChildren(tree);
 	levelList = createRankList(tree);
@@ -60,6 +72,10 @@ function mouseWheel(event) {
 	//print(event.delta);
 }
 
+function mouseClicked(){
+	click = true;
+}
+
 function windowResized() {
 	resizeCanvas(windowWidth*totalCanvasWidth, windowHeight*totalCanvasHeight);
 	var x = 0;
@@ -77,6 +93,13 @@ function draw() {
   optimizedDrawIndentedTree(levelList2,initOptions,windowWidth-300,0);
 
 	//initOptions.hsbColor = (initOptions.hsbColor +2);
+  //console.log(mouseX +"---"+mouseY);
+  if(changed){
+  	recalculateTree(tree,initOptions);
+  	recalculateTree(tree2,initOptions);
+  }
+
+  click = false;
 }
 
 function initializeIndentedTree(originalTree,listByLevel,options){
@@ -97,11 +120,23 @@ function initializeIndentedTree(originalTree,listByLevel,options){
     );*/
     
     unfoldNode(originalTree,initOptions);
-    ///originalTree.collapsed = false;
+
     setIndentCordinates(originalTree,options);
     calculateSize(originalTree,options);
 	calculateCordinates(originalTree,options,0,0);
     
+}
+
+//recaulculates tree
+async function recalculateTree(originalTree,options) {
+	/*proccesByLevel(originalTree,function(node){
+      node.y = 0;
+      node.height = 0;
+    });*/
+  	calculateSize(originalTree,options);
+	calculateCordinates(originalTree,options,0,0);
+  	changed = false;
+  	console.log("updatedTree");
 }
 
 function setIndentCordinates(root, options){
@@ -131,7 +166,10 @@ function calculateSize(root, options){
   
   while(pendingNodes.length > 0){
     let actual = pendingNodes.pop(); 
-    
+    //reset in case of being an actualizatioon
+    actual.height = options.defaultSize;
+    actual.y = 0;
+
     if(actual !== null && actual !== undefined){
     let acumulatedSize = options.defaultSize;
 	//actual.height += options.defaultSize*2;
@@ -143,11 +181,12 @@ function calculateSize(root, options){
 			
 			//relative position to parent
 			//childNode.y = acumulatedSize;
-			increaseFamilySize(childNode,nodeSize);
+			
 			childNode.height += nodeSize;
 			acumulatedSize += nodeSize;
 			//increaseFamilySize(actual,nodeSize)
 			if(!actual.collapsed){
+				increaseFamilySize(childNode,nodeSize);
 				pendingNodes.push(childNode);
 		}
       }
@@ -182,8 +221,8 @@ function calculateCordinates(root, options, xPos,yPos){
 			//relative position to parent
 			childNode.y += actual.y + acumulatedHeigth;
 			childNode.x += xPos;
-			pendingNodes.push(childNode);
 			acumulatedHeigth += childNode.height;
+			pendingNodes.push(childNode);
       }  
     }
 
@@ -197,7 +236,11 @@ function unfoldNode(node,options){
 }
   
 function foldNode(node, options){
-	node.collapsed = true;
+	//node.collapsed = true;
+	proccesByLevelConditional(node,function(actual){
+		actual.collapsed = true;
+	}
+	,"collapsed",false)
 }
 
 function drawIndentedTree(treeRoot, options){
@@ -240,6 +283,7 @@ function optimizedDrawIndentedTree(listByRank,options,xpos,ypos){
 	let family = listByRank["family"];
 	let genus = listByRank["genus"];
 	let species = listByRank["species"];
+	let infraspecies = listByRank["infraspecies"];
 	
 	
 	for(let taxon = 0; taxon < kingdom.length; taxon++){
@@ -252,22 +296,26 @@ function optimizedDrawIndentedTree(listByRank,options,xpos,ypos){
 	drawHierarchyLevel(family,options,yPointer,xpos,ypos);
 	drawHierarchyLevel(genus,options,yPointer,xpos,ypos);
 	drawHierarchyLevel(species,options,yPointer,xpos,ypos);
+	drawHierarchyLevel(infraspecies,options,yPointer,xpos,ypos);
 	colorMode(RGB, 255);
 	
 	}
 	
 function drawHierarchyLevel(taxons,options,pointer,xpos,ypos){
+	if(taxons.length <= 0) return;
 	let initial = findHead(taxons,pointer);
 	//console.log(taxons[0].r+ ":  "+initial+ " -------- " + yPointer +"/"+taxons[initial].y);
 	let iniColor = (options.hsbColor + options.hsbIncrement*getValueOfRank(taxons[0].r))%100;
 	let iniBrigthnes = (options.hsbBrigthnes + options.hsbbrigthnesIncrement*getValueOfRank(taxons[0].r))%100;
-
+	//console.log("some r : " + initial);
 	for(let taxon = initial; taxon < taxons.length; taxon++){
 		let node = taxons[taxon];
 		
-		if(node.f.length <= 0 || !node.f[node.f.length-1].collaped){
-			fill(iniColor,iniBrigthnes,100);
+		if(node.f.length <= 0 || !node.f[node.f.length-1].collapsed){
+			
+			fill(iniColor,0,iniBrigthnes);
 			drawCutNode(node,yPointer,yPointer+windowHeight*totalCanvasHeight,options,xpos,ypos);
+			drawOnlyText(node,yPointer,yPointer+windowHeight*totalCanvasHeight,options,xpos,ypos);
 			//drawNode(node,options)
 
 		}
@@ -280,6 +328,7 @@ function findHead(list, targetY){
 		let finalIndex = list.length-1;
 		let previousIndex = 1;
 		let middleIndex = 0;
+		if(list.length <= 0) return 0;
 		while( middleIndex != previousIndex){
 			previousIndex = middleIndex;
 			middleIndex = Math.floor((initialIndex+finalIndex)/2);
@@ -309,6 +358,39 @@ function isOnScreen(node,yScreenPos,screenHeight){
 		return false;
 	}
 
+
+function drawOnlyText(node,initialY,finalY,options,xpos,ypos){
+	let clicked = false;
+	//hover interaction
+	if(isOverRect(mouseX +xPointer, mouseY+yPointer,node.x + xpos,node.y + ypos,node.width,options.defaultSize)){
+		fill(options["hover-color"]);
+		if(click && !changed){
+			if(node.collapsed){
+				unfoldNode(node);
+			}else{
+				foldNode(node);
+			}
+			changed = true;
+			console.log("updating");
+		}
+
+	}
+
+
+	if(node.y >= initialY && node.y <= finalY){
+		text(node.n,node.x +5 +xpos,node.y+15);
+	}
+	
+}
+
+function isOverRect(xpos,ypos,rxpos,rypos,rwidth,rheight){
+	return (xpos >= rxpos && xpos <= rxpos+rwidth
+		&& ypos >= rypos && ypos <= rypos+rheight);
+}
+
+
+
+//deprecated functions !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!1
 function drawNode(node,options){
 	//console.log(node.x+"--"+node.y+"--"+node.width+"--"+node.height );
 	fill(options["background-color"]);
@@ -330,11 +412,12 @@ function drawCutNode(node,initialY,finalY,options,xpos,ypos){
 	//fill(options["background-color"]);
 	stroke(options["stroke-color"]);
 	strokeWeight(2);
+	if(isOverRect(mouseX +xPointer, mouseY+yPointer,node.x + xpos,node.y + ypos,node.width,options.defaultSize)){
+		fill(options["hover-color-rect"]);
+	}
+
 	rect(node.x+xpos,yCoord,node.width,newHeigth);
 	noStroke();
 	fill(0);
-	if(node.y >= initialY && node.y <= finalY){
-		text(node.n,node.x +5 +xpos,node.y+15);
-	}
 	
 }
